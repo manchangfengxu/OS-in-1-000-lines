@@ -21,8 +21,17 @@ SECTIONS {
         *(.bss .bss.* .sbss .sbss.*);
         __bss_end = .;
     }
-
+    
+    /*栈空间*/
     . = ALIGN(4);
     . += 128 * 1024; /* 128KB */
     __stack_top = .;
+
+    /*内存区域管理*/
+    /*4kb对齐*/
+    . = ALIGN(4096);
+    __free_ram = .;
+    . += 64 * 1024 *1024; /*64MB*/
+    __free_ram_end = .;
+
 }

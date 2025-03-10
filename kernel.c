@@ -40,7 +40,7 @@ void putchar(char ch) {
   sbi_call(ch, 0, 0, 0, 0, 0, 0, 1 /* Console Putchar */);
 }
 
-//需要注册的终端处理程序,地址存入
+// 需要注册的终端处理程序,地址存入
 __attribute__((naked)) __attribute__((aligned(4))) void kernel_entry(void) {
   // 保存状态,处理,恢复状态
   __asm__ __volatile__(
@@ -118,7 +118,7 @@ __attribute__((naked)) __attribute__((aligned(4))) void kernel_entry(void) {
 }
 
 // 中断处理函数
-void handle_trap(struct trap_frame *f) {
+void handle_trap(struct trap_frame* f) {
   uint32_t scause = READ_CSR(scause);
   uint32_t stval = READ_CSR(stval);
   uint32_t user_pc = READ_CSR(sepc);
@@ -126,10 +126,27 @@ void handle_trap(struct trap_frame *f) {
         user_pc);
 }
 
-void kernel_main(void) {
-  memset(__bss, 0, (size_t)__bss_end - (size_t)__bss);
+extern char __free_ram[], __free_ram_end[];
 
-  // 存入stvec寄存器(异常处理程序的位置)
-  WRITE_CSR(stvec, (uint32_t)kernel_entry);
-  __asm__ __volatile__("unimp");
+paddr_t alloc_pages(uint32_t n) {
+  static paddr_t next_paddr = (paddr_t)__free_ram;
+  paddr_t paddr = next_paddr;
+  next_paddr += n * PAGE_SIZE;
+  if (next_paddr > (paddr_t)__free_ram_end) {
+    PANIC("out of memory");
+  }
+
+  memset((void*)paddr, 0, n * PAGE_SIZE);
+  return paddr;
+}
+
+void kernel_main(void) {
+    memset(__bss, 0, (size_t) __bss_end - (size_t) __bss);
+
+    paddr_t paddr0 = alloc_pages(2);
+    paddr_t paddr1 = alloc_pages(1);
+    printf("alloc_pages test: paddr0=%x\n", paddr0);
+    printf("alloc_pages test: paddr1=%x\n", paddr1);
+
+    PANIC("booted!");
 }
