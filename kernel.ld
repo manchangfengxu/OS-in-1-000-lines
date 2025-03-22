@@ -2,6 +2,7 @@ ENTRY(boot)
 
 SECTIONS {
     . = 0x80200000;
+    __kernel_base = .;
     /* 程序*/
     .text :{
         KEEP(*(.text.boot));
