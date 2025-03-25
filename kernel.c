@@ -9,8 +9,12 @@ extern char _binary_shell_bin_start[], _binary_shell_bin_size[];
 
 struct process procs[PROCS_MAX];
 
+struct process *current_proc;
+struct process *idle_proc;
+
 void yield();
 void map_page(uint32_t *table1, uint32_t vaddr, paddr_t paddr, uint32_t flags);
+long getchar(void);
 
 __attribute__((section(".text.boot"))) __attribute__((naked)) void boot(void) {
   __asm__ __volatile__(
@@ -126,13 +130,49 @@ __attribute__((naked)) __attribute__((aligned(4))) void kernel_entry(void) {
       "sret\n");
 }
 
+void handle_syscall(struct trap_frame *f) {
+  switch (f->a3) {
+    case SYS_PUTCHAR:
+      putchar(f->a0);
+      break;
+    case SYS_GETCHAR:
+      while (1) {
+        long ch = getchar();
+        if (ch >= 0) {
+          f->a0 = ch;  // a0, a1系统返回值register
+          break;
+        }
+
+        yield();
+      }
+      break;
+    case SYS_EXIT:
+      printf("process %d exited\n", current_proc->pid);
+      current_proc->state = PROC_EXITED;
+      yield();
+      PANIC("unreachable");
+
+    default:
+      PANIC("unexpected syscall a3=%x\n", f->a3);
+      break;
+  }
+}
+
 // 中断处理函数
 void handle_trap(struct trap_frame *f) {
   uint32_t scause = READ_CSR(scause);
   uint32_t stval = READ_CSR(stval);
   uint32_t user_pc = READ_CSR(sepc);
-  PANIC("unexpected trap scause=%x, stval=%x, sepc=%x\n", scause, stval,
-        user_pc);
+  // trap, ecall
+  if (scause == SCAUSE_ECALL) {
+    handle_syscall(f);
+    user_pc += 4;
+  } else {
+    PANIC("unexpected trap scause=%x, stval=%x, sepc=%x\n", scause, stval,
+          user_pc);
+  }
+  // 更改pc,防止返回时重新ecall
+  WRITE_CSR(sepc, user_pc);
 }
 
 extern char __free_ram[], __free_ram_end[];
@@ -277,9 +317,6 @@ void proc_b_entry(void) {
   }
 }
 
-struct process *current_proc;
-struct process *idle_proc;
-
 void yield(void) {
   struct process *next = idle_proc;
   for (int i = 0; i < PROCS_MAX; i++) {
@@ -298,7 +335,7 @@ void yield(void) {
       "csrw satp, %[satp]\n"
       "sfence.vma\n"
       "csrw sscratch, %[sscratch]\n"
-      :  // SATP_SV32, 保护模式开始标记位为1
+      :  // 存储物理页号, SATP_SV32, 保护模式开始标记位为1
       : [satp] "r"(SATP_SV32 | ((uint32_t)next->page_table / PAGE_SIZE)),
         [sscratch] "r"((uint32_t)&next->stack[sizeof(next->stack)]));
 
@@ -323,6 +360,11 @@ void map_page(uint32_t *table1, uint32_t vaddr, paddr_t paddr, uint32_t flags) {
   uint32_t vpn0 = (vaddr >> 12) & 0x3ff;
   uint32_t *table0 = (uint32_t *)((table1[vpn1] >> 10) * PAGE_SIZE);
   table0[vpn0] = ((paddr / PAGE_SIZE) << 10) | flags | PAGE_V;
+}
+
+long getchar(void) {
+  struct sbiret ret = sbi_call(0, 0, 0, 0, 0, 0, 0, 2);
+  return ret.error;
 }
 
 void kernel_main(void) {
