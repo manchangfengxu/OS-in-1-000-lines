@@ -68,7 +68,7 @@ void putchar(char ch) {
   sbi_call(ch, 0, 0, 0, 0, 0, 0, 1 /* Console Putchar */);
 }
 
-// 需要注册的终端处理程序,地址存入
+// 需要注册的中断处理程序,地址存入
 __attribute__((naked)) __attribute__((aligned(4))) void kernel_entry(void) {
   // 保存状态,处理,恢复状态
   __asm__ __volatile__(
